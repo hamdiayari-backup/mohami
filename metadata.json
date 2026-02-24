@@ -1,0 +1,8 @@
+{
+  "name": "المحامي - Al Mohami",
+  "description": "منصة ذكية للمحامين التونسيين لتحليل القضايا واستخراج الثغرات القانونية باستخدام الذكاء الاصطناعي.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ]
+}

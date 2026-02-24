@@ -1,0 +1,238 @@
+import React, { useState, useEffect } from 'react';
+import { storageService } from '../services/storageService';
+import { User, UserRole } from '../types';
+import { Modal, Spinner } from '../components/UI';
+import { emailService } from '../services/emailService';
+import { pool } from '../services/db';
+
+export const AdminUsersPage: React.FC = () => {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [selectedUser, setSelectedUser] = useState<User | null>(null);
+  const [userStats, setUserStats] = useState<{ cases: number; contracts: number; events: number } | null>(null);
+  const [filterPlan, setFilterPlan] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [search, setSearch] = useState('');
+  const [upgradeLoading, setUpgradeLoading] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState<string>('basic');
+
+  useEffect(() => {
+    loadUsers();
+  }, []);
+
+  useEffect(() => {
+    if (selectedUser) {
+      setSelectedPlan(selectedUser.subscriptionPlan || 'basic');
+      loadUserStats(selectedUser.id);
+    } else {
+      setUserStats(null);
+    }
+  }, [selectedUser]);
+
+  const loadUsers = async () => {
+    setLoading(true);
+    const data = await storageService.getAllUsers();
+    setUsers(data);
+    setLoading(false);
+  };
+
+  const loadUserStats = async (userId: string) => {
+    try {
+      const [casesRes, contractsRes, eventsRes] = await Promise.all([
+        pool.query('SELECT COUNT(*) as c FROM cases WHERE user_id = $1', [userId]),
+        pool.query('SELECT COUNT(*) as c FROM contracts WHERE user_id = $1', [userId]),
+        pool.query('SELECT COUNT(*) as c FROM events WHERE user_id = $1', [userId])
+      ]);
+      setUserStats({
+        cases: parseInt(casesRes.rows[0]?.c || '0'),
+        contracts: parseInt(contractsRes.rows[0]?.c || '0'),
+        events: parseInt(eventsRes.rows[0]?.c || '0')
+      });
+    } catch {
+      setUserStats(null);
+    }
+  };
+
+  const handleUpgrade = async () => {
+    if (!selectedUser) return;
+    setUpgradeLoading(true);
+    try {
+      await storageService.upgradeUserPlan(selectedUser.id, selectedPlan as any);
+      const planNames: Record<string, string> = { basic: 'البداية', pro: 'المحترف', enterprise: 'المكتب' };
+      await emailService.sendPlanUpgradeEmail(selectedUser.email, selectedUser.name, planNames[selectedPlan] || selectedPlan);
+      setSelectedUser({ ...selectedUser, subscriptionPlan: selectedPlan as any, subscriptionStatus: 'active' });
+      loadUsers();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setUpgradeLoading(false);
+    }
+  };
+
+  const filtered = users.filter((u) => {
+    const matchPlan = filterPlan === 'all' || (u.subscriptionPlan || 'basic') === filterPlan;
+    const matchStatus = filterStatus === 'all' || (u.subscriptionStatus || 'active') === filterStatus;
+    const matchSearch = !search || 
+      u.name.toLowerCase().includes(search.toLowerCase()) || 
+      u.email.toLowerCase().includes(search.toLowerCase());
+    return matchPlan && matchStatus && matchSearch;
+  });
+
+  const planLabel = (p?: string) => ({ basic: 'البداية', pro: 'المحترف', enterprise: 'المكتب' }[p || 'basic'] || p);
+  const statusLabel = (s?: string) => ({ active: 'نشط', pending_approval: 'قيد المراجعة', expired: 'منتهي' }[s || 'active'] || s);
+
+  return (
+    <div className="space-y-6">
+      <h2 className="text-2xl font-bold text-slate-800">المستخدمين</h2>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 p-4 flex flex-wrap gap-4 items-center">
+        <input
+          type="text"
+          placeholder="بحث بالاسم أو البريد..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="px-4 py-2 border rounded-lg flex-1 min-w-[200px]"
+        />
+        <select value={filterPlan} onChange={(e) => setFilterPlan(e.target.value)} className="px-4 py-2 border rounded-lg">
+          <option value="all">جميع الباقات</option>
+          <option value="basic">البداية</option>
+          <option value="pro">المحترف</option>
+          <option value="enterprise">المكتب</option>
+        </select>
+        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="px-4 py-2 border rounded-lg">
+          <option value="all">جميع الحالات</option>
+          <option value="active">نشط</option>
+          <option value="pending_approval">قيد المراجعة</option>
+        </select>
+      </div>
+
+      <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
+        {loading ? (
+          <div className="flex justify-center py-16"><Spinner /></div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm text-right">
+              <thead className="bg-slate-50 text-slate-500">
+                <tr>
+                  <th className="px-6 py-3">الاسم</th>
+                  <th className="px-6 py-3">البريد</th>
+                  <th className="px-6 py-3">الباقة</th>
+                  <th className="px-6 py-3">الحالة</th>
+                  <th className="px-6 py-3">الدور</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map((u) => (
+                  <tr
+                    key={u.id}
+                    onClick={() => setSelectedUser(u)}
+                    className="hover:bg-slate-50 cursor-pointer transition"
+                  >
+                    <td className="px-6 py-4 font-medium text-slate-900">{u.name}</td>
+                    <td className="px-6 py-4 text-slate-500">{u.email}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2 py-1 rounded text-xs ${
+                        u.subscriptionPlan === 'basic' ? 'bg-gray-100' :
+                        u.subscriptionPlan === 'pro' ? 'bg-purple-100 text-purple-700' : 'bg-gold-100 text-gold-800'
+                      }`}>
+                        {planLabel(u.subscriptionPlan)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">
+                      <span className={u.subscriptionStatus === 'pending_approval' ? 'text-orange-600' : 'text-green-600'}>
+                        {statusLabel(u.subscriptionStatus)}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4">{u.role === UserRole.ADMIN ? 'مدير' : 'محامي'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {!loading && filtered.length === 0 && (
+          <div className="text-center py-12 text-gray-500">لا يوجد مستخدمون matching الفلاتر</div>
+        )}
+      </div>
+
+      <Modal isOpen={!!selectedUser} onClose={() => setSelectedUser(null)} title="تفاصيل المستخدم">
+        {selectedUser && (
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">الاسم</label>
+                <p className="font-medium">{selectedUser.name}</p>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">البريد</label>
+                <p className="font-medium">{selectedUser.email}</p>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">الباقة</label>
+                <p>{planLabel(selectedUser.subscriptionPlan)}</p>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">الحالة</label>
+                <p>{statusLabel(selectedUser.subscriptionStatus)}</p>
+              </div>
+              <div>
+                <label className="block text-xs text-gray-500 mb-1">ID</label>
+                <p className="text-xs font-mono text-gray-600">{selectedUser.id}</p>
+              </div>
+              {selectedUser.organizationOwnerId && (
+                <div>
+                  <label className="block text-xs text-gray-500 mb-1">عضو فريق (المكتب)</label>
+                  <p className="text-xs">نعم</p>
+                </div>
+              )}
+            </div>
+
+            {userStats && (
+              <div className="border-t pt-4">
+                <h4 className="font-bold text-slate-700 mb-2">إحصائيات</h4>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-blue-50 p-3 rounded-lg">
+                    <p className="text-2xl font-bold text-blue-700">{userStats.cases}</p>
+                    <p className="text-xs text-blue-600">قضايا</p>
+                  </div>
+                  <div className="bg-purple-50 p-3 rounded-lg">
+                    <p className="text-2xl font-bold text-purple-700">{userStats.contracts}</p>
+                    <p className="text-xs text-purple-600">عقود</p>
+                  </div>
+                  <div className="bg-green-50 p-3 rounded-lg">
+                    <p className="text-2xl font-bold text-green-700">{userStats.events}</p>
+                    <p className="text-xs text-green-600">مواعيد</p>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {selectedUser.role !== UserRole.ADMIN && (
+              <div className="border-t pt-4">
+                <h4 className="font-bold text-slate-700 mb-2">ترقية الباقة</h4>
+                <div className="flex gap-2">
+                  <select
+                    value={selectedPlan}
+                    onChange={(e) => setSelectedPlan(e.target.value)}
+                    className="flex-1 px-3 py-2 border rounded-lg"
+                  >
+                    <option value="basic">البداية</option>
+                    <option value="pro">المحترف</option>
+                    <option value="enterprise">المكتب</option>
+                  </select>
+                  <button
+                    onClick={handleUpgrade}
+                    disabled={upgradeLoading || selectedPlan === (selectedUser.subscriptionPlan || 'basic')}
+                    className="px-4 py-2 bg-gold-500 text-slate-900 rounded-lg font-bold hover:bg-gold-400 disabled:opacity-50"
+                  >
+                    {upgradeLoading ? <Spinner /> : 'ترقية'}
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+    </div>
+  );
+};
