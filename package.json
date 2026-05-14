@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
     "migrate": "node scripts/migrate-simple.js",
     "migrate:new": "node scripts/migrate-new.js",
     "ws": "node server/start-ws.cjs",
@@ -32,7 +34,13 @@
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.0",
     "concurrently": "^9.2.1",
+    "eslint": "^9.0.0",
+    "eslint-plugin-react": "^7.34.0",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-refresh": "^0.4.0",
+    "globals": "^15.0.0",
     "typescript": "~5.8.2",
+    "typescript-eslint": "^8.0.0",
     "vite": "^6.2.0"
   }
 }

@@ -1,0 +1,7 @@
+services:
+  web:
+    build: .
+    image: mouhami-ai:web
+    ports:
+      - "80:80"
+    restart: unless-stopped

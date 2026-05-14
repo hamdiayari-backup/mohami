@@ -1,0 +1,30 @@
+# Dependencies & build output
+node_modules
+dist
+.npm
+.cache
+
+# Git & IDE
+.git
+.gitignore
+.cursor
+.vscode
+*.md
+
+# Env & secrets (inject at build via --build-arg or BuildKit secret; do not COPY .env)
+.env
+.env.*
+
+# Logs & OS
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
+
+# Tests & misc (adjust if you add tests)
+coverage
+*.test.ts
+*.spec.ts
+
+# Docker metadata (optional — keep compose in context if you extend the image locally)
+.dockerignore
